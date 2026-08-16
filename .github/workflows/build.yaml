@@ -1,0 +1,95 @@
+name: Soft fork build
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: soft-fork-build
+  cancel-in-progress: true
+
+env:
+  UPSTREAM_REPO: AmanoTeam/Kahon
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork repository
+        uses: actions/checkout@main
+
+      - name: Resolve latest upstream release tag
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh release view --repo "${UPSTREAM_REPO}" --json tagName --jq '.tagName')"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "Latest upstream release is ${tag}"
+
+      - name: Check whether release already published in this repository
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.upstream.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.upstream.outputs.tag }} already exists in ${GITHUB_REPOSITORY}, nothing to do."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Release ${{ steps.upstream.outputs.tag }} is missing, building it."
+            echo "skip=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Clone upstream release tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git clone --depth 1 --branch "${{ steps.upstream.outputs.tag }}" \
+            "https://github.com/${UPSTREAM_REPO}.git" upstream
+          git -C upstream submodule update --init --recursive
+
+      - name: Apply patches
+        if: steps.check.outputs.skip != 'true'
+        working-directory: upstream
+        run: |
+          for patch in $(find ../patches -type f \( -name '*.patch' -o -name '*.diff' \) | sort); do
+            echo "Applying ${patch}"
+            if ! git apply "${patch}"; then
+              patch -p1 < "${patch}"
+            fi
+          done
+          git status --short
+
+      - name: Set up JDK 25
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-java@main
+        with:
+          java-version: 25
+          distribution: temurin
+
+      - name: Assemble APK
+        if: steps.check.outputs.skip != 'true'
+        working-directory: upstream
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Set KAHON_VERSION
+        if: steps.check.outputs.skip != 'true'
+        working-directory: upstream
+        run: echo "KAHON_VERSION=v$(grep --only-matching --perl-regexp 'versionName\s=\s\"\K([0-9\.]+)' './app/build.gradle.kts')+$(git rev-parse --short 'HEAD')" >> "${GITHUB_ENV}"
+
+      - name: Publish APK as GitHub Release
+        if: steps.check.outputs.skip != 'true'
+        working-directory: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.upstream.outputs.tag }}"
+          apk="./app/build/outputs/apk/release/app-release-unsigned.apk"
+          gh release create "${tag}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Kahon ${tag}" \
+            --generate-notes \
+            "${apk}#kahon_${KAHON_VERSION}.apk"
