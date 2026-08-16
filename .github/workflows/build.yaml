@@ -80,6 +80,44 @@ jobs:
         working-directory: upstream
         run: echo "KAHON_VERSION=v$(grep --only-matching --perl-regexp 'versionName\s=\s\"\K([0-9\.]+)' './app/build.gradle.kts')+$(git rev-parse --short 'HEAD')" >> "${GITHUB_ENV}"
 
+      - name: Sign APK
+        if: steps.check.outputs.skip != 'true'
+        working-directory: upstream
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::Missing secret KEYSTORE_BASE64. Add a base64-encoded release keystore plus KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD to the repository secrets."
+            exit 1
+          fi
+          keystore="${RUNNER_TEMP}/release.jks"
+          echo "${KEYSTORE_BASE64}" | base64 --decode > "${keystore}"
+
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          zipalign="$(ls -1 "${sdk}"/build-tools/*/zipalign 2>/dev/null | sort -V | tail -1)"
+          apksigner="$(ls -1 "${sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          if [ -z "${zipalign}" ] || [ -z "${apksigner}" ]; then
+            echo "::error::Android build-tools (zipalign/apksigner) not found under ${sdk}"
+            exit 1
+          fi
+
+          outdir="./app/build/outputs/apk/release"
+          aligned="${outdir}/app-release-aligned.apk"
+          signed="${outdir}/app-release-signed.apk"
+          "${zipalign}" -f -p 4 "${outdir}/app-release-unsigned.apk" "${aligned}"
+          "${apksigner}" sign \
+            --ks "${keystore}" \
+            --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+            --ks-key-alias "${KEY_ALIAS}" \
+            --key-pass "pass:${KEY_PASSWORD}" \
+            --out "${signed}" \
+            "${aligned}"
+          "${apksigner}" verify --print-certs "${signed}"
+          echo "Signed APK: ${signed}"
+
       - name: Publish APK as GitHub Release
         if: steps.check.outputs.skip != 'true'
         working-directory: upstream
@@ -87,7 +125,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${{ steps.upstream.outputs.tag }}"
-          apk="./app/build/outputs/apk/release/app-release-unsigned.apk"
+          apk="./app/build/outputs/apk/release/app-release-signed.apk"
           gh release create "${tag}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "Kahon ${tag}" \
