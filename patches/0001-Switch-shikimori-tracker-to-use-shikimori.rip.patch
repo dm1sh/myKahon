@@ -1,0 +1,36 @@
+From dae8245e2fe79a137f6f3b2efb5e31b6be180f8c Mon Sep 17 00:00:00 2001
+From: dm1sh <me@dmitriy.icu>
+Date: Sun, 16 Aug 2026 19:07:46 +0300
+Subject: [PATCH] Switch shikimori tracker to use shikimori.rip
+
+---
+ .../kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt   | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt b/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
+index e5edf7e7e..7edadf0ea 100644
+--- a/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
++++ b/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
+@@ -219,7 +219,7 @@ class ShikimoriApi(
+     )
+ 
+     companion object {
+-        private const val BASE_URL = "https://shikimori.io"
++        private const val BASE_URL = "https://shikimori.rip"
+         private const val API_URL = "$BASE_URL/api"
+         private const val GRAPHQL_API_URL = "$BASE_URL/api/graphql"
+         private const val OAUTH_URL = "$BASE_URL/oauth/token"
+@@ -227,8 +227,8 @@ class ShikimoriApi(
+ 
+         private const val REDIRECT_URL = "mihon://shikimori-auth"
+ 
+-        private const val CLIENT_ID = "PB9dq8DzI405s7wdtwTdirYqHiyVMh--djnP7lBUqSA"
+-        private const val CLIENT_SECRET = "NajpZcOBKB9sJtgNcejf8OB9jBN1OYYoo-k4h2WWZus"
++        private const val CLIENT_ID = "2rJVVS8VKw8LdkhSF0a4kOFcW-iwS7PPcDVIpp6049w"
++        private const val CLIENT_SECRET = "wQhZFcH40JG_pTzAZE1R13Er593B2ndHA1gtKZgxblc"
+ 
+         fun authUrl(): Uri = LOGIN_URL.toUri().buildUpon()
+             .appendQueryParameter("client_id", CLIENT_ID)
+-- 
+2.55.0
+
