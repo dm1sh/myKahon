@@ -80,7 +80,7 @@ jobs:
         working-directory: upstream
         run: echo "KAHON_VERSION=v$(grep --only-matching --perl-regexp 'versionName\s=\s\"\K([0-9\.]+)' './app/build.gradle.kts')+$(git rev-parse --short 'HEAD')" >> "${GITHUB_ENV}"
 
-      - name: Sign APK
+      - name: Sign APKs
         if: steps.check.outputs.skip != 'true'
         working-directory: upstream
         env:
@@ -105,29 +105,35 @@ jobs:
           fi
 
           outdir="./app/build/outputs/apk/release"
-          aligned="${outdir}/app-release-aligned.apk"
-          signed="${outdir}/app-release-signed.apk"
-          "${zipalign}" -f -p 4 "${outdir}/app-release-unsigned.apk" "${aligned}"
-          "${apksigner}" sign \
-            --ks "${keystore}" \
-            --ks-pass "pass:${KEYSTORE_PASSWORD}" \
-            --ks-key-alias "${KEY_ALIAS}" \
-            --key-pass "pass:${KEY_PASSWORD}" \
-            --out "${signed}" \
-            "${aligned}"
-          "${apksigner}" verify --print-certs "${signed}"
-          echo "Signed APK: ${signed}"
+          for unsigned in "${outdir}"/*-unsigned.apk; do
+            basename="${unsigned%-unsigned.apk}"
+            aligned="${basename}-aligned.apk"
+            signed="${basename}.apk"
+            "${zipalign}" -f -p 4 "${unsigned}" "${aligned}"
+            "${apksigner}" sign \
+              --ks "${keystore}" \
+              --ks-pass "pass:${KEYSTORE_PASSWORD}" \
+              --ks-key-alias "${KEY_ALIAS}" \
+              --key-pass "pass:${KEY_PASSWORD}" \
+              --out "${signed}" \
+              "${aligned}"
+            "${apksigner}" verify --print-certs "${signed}"
+            echo "Signed: ${signed}"
+          done
 
-      - name: Publish APK as GitHub Release
+      - name: Publish APKs as GitHub Release
         if: steps.check.outputs.skip != 'true'
         working-directory: upstream
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${{ steps.upstream.outputs.tag }}"
-          apk="./app/build/outputs/apk/release/app-release-signed.apk"
+          outdir="./app/build/outputs/apk/release"
           gh release create "${tag}" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "Kahon ${tag}" \
             --generate-notes \
-            "${apk}#kahon_${KAHON_VERSION}.apk"
+            $(for f in "${outdir}"/*-release.apk; do
+              abi=$(basename "$f" | sed 's/app-\(.*\)-release.apk/\1/')
+              echo "${f}#kahon_${KAHON_VERSION}_${abi}.apk"
+            done)
