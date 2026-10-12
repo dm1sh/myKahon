@@ -1,26 +1,42 @@
-From dae8245e2fe79a137f6f3b2efb5e31b6be180f8c Mon Sep 17 00:00:00 2001
+From 1775a18b9d8f6abbb922f2b62939ed8f0830f863 Mon Sep 17 00:00:00 2001
 From: dm1sh <me@dmitriy.icu>
 Date: Sun, 16 Aug 2026 19:07:46 +0300
-Subject: [PATCH] Switch shikimori tracker to use shikimori.rip
+Subject: [PATCH 1/2] Switch shikimori tracker to use shikimori.rip
 
+Also point the Apollo GraphQL introspection endpoint at shikimori.rip,
+since upstream moved the GraphQL API base out of ShikimoriApi.kt into
+the Apollo Gradle configuration (AmanoTeam/Kahon ec614bb4c).
 ---
+ app/build.gradle.kts                                        | 2 +-
  .../kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt   | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
+ 2 files changed, 4 insertions(+), 4 deletions(-)
 
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 80b5d5887..0e5feee27 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -320,7 +320,7 @@ apollo {
+         srcDir(file(srcDir))
+ 
+         introspection {
+-            endpointUrl.set("https://shikimori.io/api/graphql")
++            endpointUrl.set("https://shikimori.rip/api/graphql")
+             schemaFile.set(file("$srcDir/shikimori.graphqls"))
+         }
+ 
 diff --git a/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt b/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
-index e5edf7e7e..7edadf0ea 100644
+index bc02fa039..13aa54bea 100644
 --- a/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
 +++ b/app/src/main/java/eu/kanade/tachiyomi/data/track/shikimori/ShikimoriApi.kt
-@@ -219,7 +219,7 @@ class ShikimoriApi(
+@@ -213,15 +213,15 @@ class ShikimoriApi(
      )
  
      companion object {
 -        private const val BASE_URL = "https://shikimori.io"
 +        private const val BASE_URL = "https://shikimori.rip"
          private const val API_URL = "$BASE_URL/api"
-         private const val GRAPHQL_API_URL = "$BASE_URL/api/graphql"
          private const val OAUTH_URL = "$BASE_URL/oauth/token"
-@@ -227,8 +227,8 @@ class ShikimoriApi(
+         private const val LOGIN_URL = "$BASE_URL/oauth/authorize"
  
          private const val REDIRECT_URL = "mihon://shikimori-auth"
  
@@ -32,5 +48,5 @@ index e5edf7e7e..7edadf0ea 100644
          fun authUrl(): Uri = LOGIN_URL.toUri().buildUpon()
              .appendQueryParameter("client_id", CLIENT_ID)
 -- 
-2.55.0
+2.52.0
 
