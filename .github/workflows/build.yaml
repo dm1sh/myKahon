@@ -27,9 +27,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="$(gh release view --repo "${UPSTREAM_REPO}" --json tagName --jq '.tagName')"
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-          echo "Latest upstream release is ${tag}"
+          values="$(gh release view --repo "${UPSTREAM_REPO}" --json tagName,publishedAt --jq '.tagName + "\n" + .publishedAt')"
+          tag="$(sed -n 1p <<<"${values}")"
+          published_at="$(sed -n 2p <<<"${values}")"
+          {
+            echo "tag=${tag}"
+            echo "published_at=${published_at}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Latest upstream release is ${tag} (published ${published_at})"
 
       - name: Check whether release already published in this repository
         id: check
@@ -39,10 +44,42 @@ jobs:
           if gh release view "${{ steps.upstream.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             echo "Release ${{ steps.upstream.outputs.tag }} already exists in ${GITHUB_REPOSITORY}, nothing to do."
             echo "skip=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "Release ${{ steps.upstream.outputs.tag }} is missing, building it."
-            echo "skip=false" >> "${GITHUB_OUTPUT}"
+            exit 0
           fi
+
+          # Gate for scheduled runs: rerunning an attempt that already failed
+          # for the same upstream release and the same fork commit will fail
+          # the same way, so skip it until either side changes. Lookup keys:
+          #  - most recent failed run of this workflow (skipped runs conclude
+          #    "success", cancelled ones never got a conclusion - both ignored);
+          #  - same commit: the failure must have run off the current HEAD;
+          #  - upstream unchanged: no release published after that failure.
+          # Manual workflow_dispatch runs always retry, bypassing this gate.
+          skip_reason="Release ${{ steps.upstream.outputs.tag }} is missing, building it."
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            last_failure="$(gh run list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --workflow "Soft fork build" \
+              --limit 20 \
+              --json conclusion,headSha,createdAt \
+              --jq 'map(select(.conclusion == "failure")) | .[0] // empty')"
+            if [ -n "${last_failure}" ]; then
+              failed_sha="$(jq --raw-output '.headSha' <<<"${last_failure}")"
+              failed_at="$(jq --raw-output '.createdAt' <<<"${last_failure}")"
+              published_at="${{ steps.upstream.outputs.published_at }}"
+              if [ "${failed_sha}" = "${GITHUB_SHA}" ] \
+                && [[ ! "${published_at}" > "${failed_at}" ]]; then
+                skip_reason="Previous run already failed for ${failed_sha} at ${failed_at}, and upstream (latest release ${{ steps.upstream.outputs.tag }}, published ${published_at}) and this repository are unchanged; skipping."
+                echo "::notice::${skip_reason} Regenerate patches and push, or run the workflow manually to retry."
+                echo "skip=true" >> "${GITHUB_OUTPUT}"
+                echo "${skip_reason}"
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "${skip_reason}."
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
 
       - name: Clone upstream release tag
         if: steps.check.outputs.skip != 'true'
