@@ -1,7 +1,7 @@
-From 0dfa0ab485619da86ae1d631b7b683f49f164ff3 Mon Sep 17 00:00:00 2001
+From 82e4714f2df9216b5dee52ca38e4a83eaf227970 Mon Sep 17 00:00:00 2001
 From: dm1sh <me@dmitriy.icu>
 Date: Thu, 3 Sep 2026 12:00:00 +0100
-Subject: [PATCH 2/2] Build: minSdk 25, per-ABI APK splits, universal APK
+Subject: [PATCH] Build: minSdk 25, per-ABI APK splits, universal APK
 
 Lower minSdk to 25 and produce per-ABI APKs for armeabi-v7a,
 arm64-v8a, x86 and x86_64 plus a universal APK.
@@ -15,19 +15,19 @@ For API 25 compatibility:
 - Guard canRequestPackageInstalls() (API 26+) in the install permission
   state observer to avoid a NoSuchMethodError on API < 26.
 ---
- app/build.gradle.kts                          | 11 +++++-
- .../kanade/presentation/util/Permissions.kt   |  7 +++-
- .../sc_collections_bookmark_48dp.xml          | 24 +++++++++++++
- .../main/res/drawable-v26/sc_explore_48dp.xml | 21 +++++++++++
- .../main/res/drawable-v26/sc_history_48dp.xml | 21 +++++++++++
- .../res/drawable-v26/sc_new_releases_48dp.xml | 21 +++++++++++
- .../drawable/sc_collections_bookmark_48dp.xml | 36 +++++++------------
- app/src/main/res/drawable/sc_explore_48dp.xml | 30 +++++-----------
- app/src/main/res/drawable/sc_history_48dp.xml | 30 +++++-----------
- .../res/drawable/sc_new_releases_48dp.xml     | 30 +++++-----------
- .../main/res/mipmap-anydpi/ic_launcher.xml    |  9 +++++
+ app/build.gradle.kts                          | 11 ++++-
+ .../kanade/presentation/util/Permissions.kt   |  7 ++-
+ .../sc_collections_bookmark_48dp.xml          | 26 +++++++++++
+ .../main/res/drawable-v26/sc_explore_48dp.xml | 26 +++++++++++
+ .../main/res/drawable-v26/sc_history_48dp.xml | 26 +++++++++++
+ .../res/drawable-v26/sc_new_releases_48dp.xml | 26 +++++++++++
+ .../drawable/sc_collections_bookmark_48dp.xml | 43 ++++++++-----------
+ app/src/main/res/drawable/sc_explore_48dp.xml | 43 ++++++++-----------
+ app/src/main/res/drawable/sc_history_48dp.xml | 43 ++++++++-----------
+ .../res/drawable/sc_new_releases_48dp.xml     | 43 ++++++++-----------
+ .../main/res/mipmap-anydpi/ic_launcher.xml    |  9 ++++
  gradle/mihon.versions.toml                    |  2 +-
- 12 files changed, 152 insertions(+), 90 deletions(-)
+ 12 files changed, 202 insertions(+), 103 deletions(-)
  create mode 100644 app/src/main/res/drawable-v26/sc_collections_bookmark_48dp.xml
  create mode 100644 app/src/main/res/drawable-v26/sc_explore_48dp.xml
  create mode 100644 app/src/main/res/drawable-v26/sc_history_48dp.xml
@@ -35,7 +35,7 @@ For API 25 compatibility:
  create mode 100644 app/src/main/res/mipmap-anydpi/ic_launcher.xml
 
 diff --git a/app/build.gradle.kts b/app/build.gradle.kts
-index 0e5feee27..23b479662 100644
+index df75647..9788bce 100644
 --- a/app/build.gradle.kts
 +++ b/app/build.gradle.kts
 @@ -19,7 +19,7 @@ plugins {
@@ -64,7 +64,7 @@ index 0e5feee27..23b479662 100644
          includeInApk = Config.includeDependencyInfo
          includeInBundle = Config.includeDependencyInfo
 diff --git a/app/src/main/java/eu/kanade/presentation/util/Permissions.kt b/app/src/main/java/eu/kanade/presentation/util/Permissions.kt
-index 80c2f90b9..924e7bcbd 100644
+index 80c2f90..924e7bc 100644
 --- a/app/src/main/java/eu/kanade/presentation/util/Permissions.kt
 +++ b/app/src/main/java/eu/kanade/presentation/util/Permissions.kt
 @@ -1,5 +1,6 @@
@@ -89,10 +89,10 @@ index 80c2f90b9..924e7bcbd 100644
          lifecycleOwner.lifecycle.addObserver(observer)
 diff --git a/app/src/main/res/drawable-v26/sc_collections_bookmark_48dp.xml b/app/src/main/res/drawable-v26/sc_collections_bookmark_48dp.xml
 new file mode 100644
-index 000000000..0d5d29b36
+index 0000000..a20cbef
 --- /dev/null
 +++ b/app/src/main/res/drawable-v26/sc_collections_bookmark_48dp.xml
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,26 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 +    xmlns:tools="http://schemas.android.com/tools"
@@ -107,22 +107,24 @@ index 000000000..0d5d29b36
 +        <group
 +            android:translateX="16"
 +            android:translateY="16">
-+            <path
-+                android:fillColor="@color/accent_blue"
-+                android:pathData="M4,6H2v14c0,1.1 0.9,2 2,2h14v-2H4V6z"/>
-+            <path
-+                android:fillColor="@color/accent_blue"
-+                android:pathData="M20,2L8,2c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM20,12l-2.5,-1.5L15,12L15,4h5v8z"/>
++            <group
++                android:scaleX="0.025"
++                android:scaleY="0.025"
++                android:translateY="24">
++                <path
++                    android:fillColor="@color/accent_blue"
++                    android:pathData="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320ZM160-80q-33 0-56.5-23.5T80-160v-520q0-17 11.5-28.5T120-720q17 0 28.5 11.5T160-680v520h520q17 0 28.5 11.5T720-120q0 17-11.5 28.5T680-80H160Zm360-475q0 12 10 17.5t20-.5l49-30q10-6 21-6t21 6l49 30q10 6 20 .5t10-17.5v-245H520v245Z" />
++            </group>
 +        </group>
 +    </vector>
 +</foreground>
 +</adaptive-icon>
 diff --git a/app/src/main/res/drawable-v26/sc_explore_48dp.xml b/app/src/main/res/drawable-v26/sc_explore_48dp.xml
 new file mode 100644
-index 000000000..e0b630e4a
+index 0000000..68125d7
 --- /dev/null
 +++ b/app/src/main/res/drawable-v26/sc_explore_48dp.xml
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,26 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 +    xmlns:tools="http://schemas.android.com/tools"
@@ -137,19 +139,24 @@ index 000000000..e0b630e4a
 +        <group
 +            android:translateX="16"
 +            android:translateY="16">
-+            <path
-+                android:fillColor="@color/accent_blue"
-+                android:pathData="M12,10.9c-0.61,0 -1.1,0.49 -1.1,1.1s0.49,1.1 1.1,1.1c0.61,0 1.1,-0.49 1.1,-1.1s-0.49,-1.1 -1.1,-1.1zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM14.19,14.19L6,18l3.81,-8.19L18,6l-3.81,8.19z" />
++            <group
++                android:scaleX="0.025"
++                android:scaleY="0.025"
++                android:translateY="24">
++                <path
++                    android:fillColor="@color/accent_blue"
++                    android:pathData="m335-310 202-58q20-6 34.5-20.5T592-423l58-202q3-11-5.5-19.5T625-650l-202 58q-20 6-34.5 20.5T368-537l-58 202q-3 11 5.5 19.5T335-310Zm145-110q-25 0-42.5-17.5T420-480q0-25 17.5-42.5T480-540q25 0 42.5 17.5T540-480q0 25-17.5 42.5T480-420Zm0 340q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" />
++            </group>
 +        </group>
 +    </vector>
 +</foreground>
 +</adaptive-icon>
 diff --git a/app/src/main/res/drawable-v26/sc_history_48dp.xml b/app/src/main/res/drawable-v26/sc_history_48dp.xml
 new file mode 100644
-index 000000000..394b9b890
+index 0000000..1be9510
 --- /dev/null
 +++ b/app/src/main/res/drawable-v26/sc_history_48dp.xml
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,26 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 +    xmlns:tools="http://schemas.android.com/tools"
@@ -164,19 +171,24 @@ index 000000000..394b9b890
 +        <group
 +            android:translateX="16"
 +            android:translateY="16">
-+            <path
-+                android:fillColor="@color/accent_blue"
-+                android:pathData="M13,3c-4.97,0 -9,4.03 -9,9L1,12l3.89,3.89 0.07,0.14L9,12L6,12c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08L13.5,8L12,8z" />
++            <group
++                android:scaleX="0.025"
++                android:scaleY="0.025"
++                android:translateY="24">
++                <path
++                    android:fillColor="@color/accent_blue"
++                    android:pathData="M480-120q-126 0-223-76.5T131-392q-4-15 6-27.5t27-14.5q16-2 29 6t18 24q24 90 99 147t170 57q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h70q17 0 28.5 11.5T360-600q0 17-11.5 28.5T320-560H160q-17 0-28.5-11.5T120-600v-160q0-17 11.5-28.5T160-800q17 0 28.5 11.5T200-760v54q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm40-376 100 100q11 11 11 28t-11 28q-11 11-28 11t-28-11L452-452q-6-6-9-13.5t-3-15.5v-159q0-17 11.5-28.5T480-680q17 0 28.5 11.5T520-640v144Z" />
++            </group>
 +        </group>
 +    </vector>
 +</foreground>
 +</adaptive-icon>
 diff --git a/app/src/main/res/drawable-v26/sc_new_releases_48dp.xml b/app/src/main/res/drawable-v26/sc_new_releases_48dp.xml
 new file mode 100644
-index 000000000..eb2d09ba4
+index 0000000..a085c59
 --- /dev/null
 +++ b/app/src/main/res/drawable-v26/sc_new_releases_48dp.xml
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,26 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 +    xmlns:tools="http://schemas.android.com/tools"
@@ -191,19 +203,24 @@ index 000000000..eb2d09ba4
 +        <group
 +            android:translateX="16"
 +            android:translateY="16">
-+            <path
-+                android:fillColor="@color/accent_blue"
-+                android:pathData="M23,12l-2.44,-2.78 0.34,-3.68 -3.61,-0.82 -1.89,-3.18L12,3 8.6,1.54 6.71,4.72l-3.61,0.81 0.34,3.68L1,12l2.44,2.78 -0.34,3.69 3.61,0.82 1.89,3.18L12,21l3.4,1.46 1.89,-3.18 3.61,-0.82 -0.34,-3.68L23,12zM13,17h-2v-2h2v2zM13,13h-2L11,7h2v6z" />
++            <group
++                android:scaleX="0.025"
++                android:scaleY="0.025"
++                android:translateY="24">
++                <path
++                    android:fillColor="@color/accent_blue"
++                    android:pathData="m326-90-58-98-110-24q-15-3-24-15.5t-7-27.5l11-113-75-86q-10-11-10-26t10-26l75-86-11-113q-2-15 7-27.5t24-15.5l110-24 58-98q8-13 22-17.5t28 1.5l104 44 104-44q14-6 28-1.5t22 17.5l58 98 110 24q15 3 24 15.5t7 27.5l-11 113 75 86q10 11 10 26t-10 26l-75 86 11 113q2 15-7 27.5T802-212l-110 24-58 98q-8 13-22 17.5T584-74l-104-44-104 44q-14 6-28 1.5T326-90Zm182.5-201.5Q520-303 520-320t-11.5-28.5Q497-360 480-360t-28.5 11.5Q440-337 440-320t11.5 28.5Q463-280 480-280t28.5-11.5Zm0-160Q520-463 520-480v-160q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640v160q0 17 11.5 28.5T480-440q17 0 28.5-11.5Z" />
++            </group>
 +        </group>
 +    </vector>
 +</foreground>
 +</adaptive-icon>
 diff --git a/app/src/main/res/drawable/sc_collections_bookmark_48dp.xml b/app/src/main/res/drawable/sc_collections_bookmark_48dp.xml
-index 0d5d29b36..b6bd411ae 100644
+index a20cbef..3908f08 100644
 --- a/app/src/main/res/drawable/sc_collections_bookmark_48dp.xml
 +++ b/app/src/main/res/drawable/sc_collections_bookmark_48dp.xml
-@@ -1,24 +1,12 @@
--<?xml version="1.0" encoding="utf-8"?>
+@@ -1,26 +1,19 @@
+ <?xml version="1.0" encoding="utf-8"?>
 -<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 -    xmlns:tools="http://schemas.android.com/tools"
 -    tools:keep="@drawable/sc_collections_bookmark_48dp">
@@ -217,12 +234,14 @@ index 0d5d29b36..b6bd411ae 100644
 -        <group
 -            android:translateX="16"
 -            android:translateY="16">
--            <path
--                android:fillColor="@color/accent_blue"
--                android:pathData="M4,6H2v14c0,1.1 0.9,2 2,2h14v-2H4V6z"/>
--            <path
--                android:fillColor="@color/accent_blue"
--                android:pathData="M20,2L8,2c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM20,12l-2.5,-1.5L15,12L15,4h5v8z"/>
+-            <group
+-                android:scaleX="0.025"
+-                android:scaleY="0.025"
+-                android:translateY="24">
+-                <path
+-                    android:fillColor="@color/accent_blue"
+-                    android:pathData="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320ZM160-80q-33 0-56.5-23.5T80-160v-520q0-17 11.5-28.5T120-720q17 0 28.5 11.5T160-680v520h520q17 0 28.5 11.5T720-120q0 17-11.5 28.5T680-80H160Zm360-475q0 12 10 17.5t20-.5l49-30q10-6 21-6t21 6l49 30q10 6 20 .5t10-17.5v-245H520v245Z" />
+-            </group>
 -        </group>
 -    </vector>
 -</foreground>
@@ -230,21 +249,27 @@ index 0d5d29b36..b6bd411ae 100644
 +<vector xmlns:android="http://schemas.android.com/apk/res/android"
 +    android:width="24dp"
 +    android:height="24dp"
-+    android:viewportWidth="24.0"
-+    android:viewportHeight="24.0">
-+    <path
-+        android:fillColor="@color/accent_blue"
-+        android:pathData="M4,6H2v14c0,1.1 0.9,2 2,2h14v-2H4V6z"/>
-+    <path
-+        android:fillColor="@color/accent_blue"
-+        android:pathData="M20,2L8,2c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2L22,4c0,-1.1 -0.9,-2 -2,-2zM20,12l-2.5,-1.5L15,12L15,4h5v8z"/>
++    android:viewportWidth="56.0"
++    android:viewportHeight="56.0">
++      <group
++          android:translateX="16"
++          android:translateY="16">
++          <group
++              android:scaleX="0.025"
++              android:scaleY="0.025"
++              android:translateY="24">
++              <path
++                  android:fillColor="@color/accent_blue"
++                  android:pathData="M320-240q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320ZM160-80q-33 0-56.5-23.5T80-160v-520q0-17 11.5-28.5T120-720q17 0 28.5 11.5T160-680v520h520q17 0 28.5 11.5T720-120q0 17-11.5 28.5T680-80H160Zm360-475q0 12 10 17.5t20-.5l49-30q10-6 21-6t21 6l49 30q10 6 20 .5t10-17.5v-245H520v245Z" />
++          </group>
++      </group>
 +</vector>
 diff --git a/app/src/main/res/drawable/sc_explore_48dp.xml b/app/src/main/res/drawable/sc_explore_48dp.xml
-index e0b630e4a..d87bca760 100644
+index 68125d7..d06bf8e 100644
 --- a/app/src/main/res/drawable/sc_explore_48dp.xml
 +++ b/app/src/main/res/drawable/sc_explore_48dp.xml
-@@ -1,21 +1,9 @@
--<?xml version="1.0" encoding="utf-8"?>
+@@ -1,26 +1,19 @@
+ <?xml version="1.0" encoding="utf-8"?>
 -<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 -    xmlns:tools="http://schemas.android.com/tools"
 -    tools:keep="@drawable/sc_explore_48dp">
@@ -258,9 +283,14 @@ index e0b630e4a..d87bca760 100644
 -        <group
 -            android:translateX="16"
 -            android:translateY="16">
--            <path
--                android:fillColor="@color/accent_blue"
--                android:pathData="M12,10.9c-0.61,0 -1.1,0.49 -1.1,1.1s0.49,1.1 1.1,1.1c0.61,0 1.1,-0.49 1.1,-1.1s-0.49,-1.1 -1.1,-1.1zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM14.19,14.19L6,18l3.81,-8.19L18,6l-3.81,8.19z" />
+-            <group
+-                android:scaleX="0.025"
+-                android:scaleY="0.025"
+-                android:translateY="24">
+-                <path
+-                    android:fillColor="@color/accent_blue"
+-                    android:pathData="m335-310 202-58q20-6 34.5-20.5T592-423l58-202q3-11-5.5-19.5T625-650l-202 58q-20 6-34.5 20.5T368-537l-58 202q-3 11 5.5 19.5T335-310Zm145-110q-25 0-42.5-17.5T420-480q0-25 17.5-42.5T480-540q25 0 42.5 17.5T540-480q0 25-17.5 42.5T480-420Zm0 340q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" />
+-            </group>
 -        </group>
 -    </vector>
 -</foreground>
@@ -268,18 +298,27 @@ index e0b630e4a..d87bca760 100644
 +<vector xmlns:android="http://schemas.android.com/apk/res/android"
 +    android:width="24dp"
 +    android:height="24dp"
-+    android:viewportWidth="24.0"
-+    android:viewportHeight="24.0">
-+    <path
-+        android:fillColor="@color/accent_blue"
-+        android:pathData="M12,10.9c-0.61,0 -1.1,0.49 -1.1,1.1s0.49,1.1 1.1,1.1c0.61,0 1.1,-0.49 1.1,-1.1s-0.49,-1.1 -1.1,-1.1zM12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM14.19,14.19L6,18l3.81,-8.19L18,6l-3.81,8.19z"/>
++    android:viewportWidth="56.0"
++    android:viewportHeight="56.0">
++      <group
++          android:translateX="16"
++          android:translateY="16">
++          <group
++              android:scaleX="0.025"
++              android:scaleY="0.025"
++              android:translateY="24">
++              <path
++                  android:fillColor="@color/accent_blue"
++                  android:pathData="m335-310 202-58q20-6 34.5-20.5T592-423l58-202q3-11-5.5-19.5T625-650l-202 58q-20 6-34.5 20.5T368-537l-58 202q-3 11 5.5 19.5T335-310Zm145-110q-25 0-42.5-17.5T420-480q0-25 17.5-42.5T480-540q25 0 42.5 17.5T540-480q0 25-17.5 42.5T480-420Zm0 340q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Z" />
++          </group>
++      </group>
 +</vector>
 diff --git a/app/src/main/res/drawable/sc_history_48dp.xml b/app/src/main/res/drawable/sc_history_48dp.xml
-index 394b9b890..ddea3f38f 100644
+index 1be9510..60648f2 100644
 --- a/app/src/main/res/drawable/sc_history_48dp.xml
 +++ b/app/src/main/res/drawable/sc_history_48dp.xml
-@@ -1,21 +1,9 @@
--<?xml version="1.0" encoding="utf-8"?>
+@@ -1,26 +1,19 @@
+ <?xml version="1.0" encoding="utf-8"?>
 -<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 -    xmlns:tools="http://schemas.android.com/tools"
 -    tools:keep="@drawable/sc_history_48dp">
@@ -293,9 +332,14 @@ index 394b9b890..ddea3f38f 100644
 -        <group
 -            android:translateX="16"
 -            android:translateY="16">
--            <path
--                android:fillColor="@color/accent_blue"
--                android:pathData="M13,3c-4.97,0 -9,4.03 -9,9L1,12l3.89,3.89 0.07,0.14L9,12L6,12c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08L13.5,8L12,8z" />
+-            <group
+-                android:scaleX="0.025"
+-                android:scaleY="0.025"
+-                android:translateY="24">
+-                <path
+-                    android:fillColor="@color/accent_blue"
+-                    android:pathData="M480-120q-126 0-223-76.5T131-392q-4-15 6-27.5t27-14.5q16-2 29 6t18 24q24 90 99 147t170 57q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h70q17 0 28.5 11.5T360-600q0 17-11.5 28.5T320-560H160q-17 0-28.5-11.5T120-600v-160q0-17 11.5-28.5T160-800q17 0 28.5 11.5T200-760v54q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm40-376 100 100q11 11 11 28t-11 28q-11 11-28 11t-28-11L452-452q-6-6-9-13.5t-3-15.5v-159q0-17 11.5-28.5T480-680q17 0 28.5 11.5T520-640v144Z" />
+-            </group>
 -        </group>
 -    </vector>
 -</foreground>
@@ -303,18 +347,27 @@ index 394b9b890..ddea3f38f 100644
 +<vector xmlns:android="http://schemas.android.com/apk/res/android"
 +    android:width="24dp"
 +    android:height="24dp"
-+    android:viewportWidth="24.0"
-+    android:viewportHeight="24.0">
-+    <path
-+        android:fillColor="@color/accent_blue"
-+        android:pathData="M13,3c-4.97,0 -9,4.03 -9,9L1,12l3.89,3.89 0.07,0.14L9,12L6,12c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9zM12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08L13.5,8L12,8z"/>
++    android:viewportWidth="56.0"
++    android:viewportHeight="56.0">
++      <group
++          android:translateX="16"
++          android:translateY="16">
++          <group
++              android:scaleX="0.025"
++              android:scaleY="0.025"
++              android:translateY="24">
++              <path
++                  android:fillColor="@color/accent_blue"
++                  android:pathData="M480-120q-126 0-223-76.5T131-392q-4-15 6-27.5t27-14.5q16-2 29 6t18 24q24 90 99 147t170 57q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h70q17 0 28.5 11.5T360-600q0 17-11.5 28.5T320-560H160q-17 0-28.5-11.5T120-600v-160q0-17 11.5-28.5T160-800q17 0 28.5 11.5T200-760v54q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm40-376 100 100q11 11 11 28t-11 28q-11 11-28 11t-28-11L452-452q-6-6-9-13.5t-3-15.5v-159q0-17 11.5-28.5T480-680q17 0 28.5 11.5T520-640v144Z" />
++          </group>
++      </group>
 +</vector>
 diff --git a/app/src/main/res/drawable/sc_new_releases_48dp.xml b/app/src/main/res/drawable/sc_new_releases_48dp.xml
-index eb2d09ba4..801e45dda 100644
+index a085c59..d69f4c6 100644
 --- a/app/src/main/res/drawable/sc_new_releases_48dp.xml
 +++ b/app/src/main/res/drawable/sc_new_releases_48dp.xml
-@@ -1,21 +1,9 @@
--<?xml version="1.0" encoding="utf-8"?>
+@@ -1,26 +1,19 @@
+ <?xml version="1.0" encoding="utf-8"?>
 -<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"
 -    xmlns:tools="http://schemas.android.com/tools"
 -    tools:keep="@drawable/sc_new_releases_48dp">
@@ -328,9 +381,14 @@ index eb2d09ba4..801e45dda 100644
 -        <group
 -            android:translateX="16"
 -            android:translateY="16">
--            <path
--                android:fillColor="@color/accent_blue"
--                android:pathData="M23,12l-2.44,-2.78 0.34,-3.68 -3.61,-0.82 -1.89,-3.18L12,3 8.6,1.54 6.71,4.72l-3.61,0.81 0.34,3.68L1,12l2.44,2.78 -0.34,3.69 3.61,0.82 1.89,3.18L12,21l3.4,1.46 1.89,-3.18 3.61,-0.82 -0.34,-3.68L23,12zM13,17h-2v-2h2v2zM13,13h-2L11,7h2v6z" />
+-            <group
+-                android:scaleX="0.025"
+-                android:scaleY="0.025"
+-                android:translateY="24">
+-                <path
+-                    android:fillColor="@color/accent_blue"
+-                    android:pathData="m326-90-58-98-110-24q-15-3-24-15.5t-7-27.5l11-113-75-86q-10-11-10-26t10-26l75-86-11-113q-2-15 7-27.5t24-15.5l110-24 58-98q8-13 22-17.5t28 1.5l104 44 104-44q14-6 28-1.5t22 17.5l58 98 110 24q15 3 24 15.5t7 27.5l-11 113 75 86q10 11 10 26t-10 26l-75 86 11 113q2 15-7 27.5T802-212l-110 24-58 98q-8 13-22 17.5T584-74l-104-44-104 44q-14 6-28 1.5T326-90Zm182.5-201.5Q520-303 520-320t-11.5-28.5Q497-360 480-360t-28.5 11.5Q440-337 440-320t11.5 28.5Q463-280 480-280t28.5-11.5Zm0-160Q520-463 520-480v-160q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640v160q0 17 11.5 28.5T480-440q17 0 28.5-11.5Z" />
+-            </group>
 -        </group>
 -    </vector>
 -</foreground>
@@ -338,15 +396,24 @@ index eb2d09ba4..801e45dda 100644
 +<vector xmlns:android="http://schemas.android.com/apk/res/android"
 +    android:width="24dp"
 +    android:height="24dp"
-+    android:viewportWidth="24.0"
-+    android:viewportHeight="24.0">
-+    <path
-+        android:fillColor="@color/accent_blue"
-+        android:pathData="M23,12l-2.44,-2.78 0.34,-3.68 -3.61,-0.82 -1.89,-3.18L12,3 8.6,1.54 6.71,4.72l-3.61,0.81 0.34,3.68L1,12l2.44,2.78 -0.34,3.69 3.61,0.82 1.89,3.18L12,21l3.4,1.46 1.89,-3.18 3.61,-0.82 -0.34,-3.68L23,12zM13,17h-2v-2h2v2zM13,13h-2L11,7h2v6z"/>
++    android:viewportWidth="56.0"
++    android:viewportHeight="56.0">
++      <group
++          android:translateX="16"
++          android:translateY="16">
++          <group
++              android:scaleX="0.025"
++              android:scaleY="0.025"
++              android:translateY="24">
++              <path
++                  android:fillColor="@color/accent_blue"
++                  android:pathData="m326-90-58-98-110-24q-15-3-24-15.5t-7-27.5l11-113-75-86q-10-11-10-26t10-26l75-86-11-113q-2-15 7-27.5t24-15.5l110-24 58-98q8-13 22-17.5t28 1.5l104 44 104-44q14-6 28-1.5t22 17.5l58 98 110 24q15 3 24 15.5t7 27.5l-11 113 75 86q10 11 10 26t-10 26l-75 86 11 113q2 15-7 27.5T802-212l-110 24-58 98q-8 13-22 17.5T584-74l-104-44-104 44q-14 6-28 1.5T326-90Zm182.5-201.5Q520-303 520-320t-11.5-28.5Q497-360 480-360t-28.5 11.5Q440-337 440-320t11.5 28.5Q463-280 480-280t28.5-11.5Zm0-160Q520-463 520-480v-160q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640v160q0 17 11.5 28.5T480-440q17 0 28.5-11.5Z" />
++          </group>
++      </group>
 +</vector>
 diff --git a/app/src/main/res/mipmap-anydpi/ic_launcher.xml b/app/src/main/res/mipmap-anydpi/ic_launcher.xml
 new file mode 100644
-index 000000000..5876272e2
+index 0000000..5876272
 --- /dev/null
 +++ b/app/src/main/res/mipmap-anydpi/ic_launcher.xml
 @@ -0,0 +1,9 @@
@@ -360,7 +427,7 @@ index 000000000..5876272e2
 +        android:gravity="center" />
 +</layer-list>
 diff --git a/gradle/mihon.versions.toml b/gradle/mihon.versions.toml
-index f60229552..452ebf86e 100644
+index f602295..452ebf8 100644
 --- a/gradle/mihon.versions.toml
 +++ b/gradle/mihon.versions.toml
 @@ -1,6 +1,6 @@
@@ -371,6 +438,3 @@ index f60229552..452ebf86e 100644
  android-sdk-compile = "37.2"
  android-sdk-target = "36"
  android-ndk = "30.0.16248370"
--- 
-2.52.0
-
