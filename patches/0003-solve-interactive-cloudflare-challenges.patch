@@ -1,0 +1,239 @@
+From 37dc5d59f27b64637594ab9edfcd608264d24373 Mon Sep 17 00:00:00 2001
+From: dm1sh <me@dmitriy.icu>
+Date: Sat, 31 Oct 2026 18:58:20 +0000
+Subject: [PATCH] Solve interactive Cloudflare challenges in a user-visible
+ WebView
+
+The headless WebView used by the Cloudflare interceptor immediately
+aborts on challenges that need interaction (invisible WebView, no way to
+click). Fall back to a small user-facing screen hosting the challenge
+WebView after the headless attempt fails, so the person in front of the
+device can complete interactive Turnstile challenges by hand.
+
+The screen's WebView is loaded with the triggering request's headers -
+most importantly its User-Agent - and shares the CF cookies with OkHttp
+through the Android CookieManager, so the clearance earned by solving
+here applies to the request that caused the challenge (including the
+tracker API calls to domains like shikimori.rip).
+---
+ core/common/src/main/AndroidManifest.xml      |  12 +-
+ .../CloudflareChallengeActivity.kt            | 174 ++++++++++++++++++
+ .../interceptor/CloudflareInterceptor.kt      |   6 +
+ 3 files changed, 191 insertions(+), 1 deletion(-)
+ create mode 100644 core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
+
+diff --git a/core/common/src/main/AndroidManifest.xml b/core/common/src/main/AndroidManifest.xml
+index 8072ee0..027919d 100644
+--- a/core/common/src/main/AndroidManifest.xml
++++ b/core/common/src/main/AndroidManifest.xml
+@@ -1,2 +1,12 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<manifest />
++<manifest xmlns:android="http://schemas.android.com/apk/res/android">
++    <application>
++        <activity
++            android:name="eu.kanade.tachiyomi.network.interceptor.CloudflareChallengeActivity"
++            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
++            android:excludeFromRecents="true"
++            android:exported="false"
++            android:label="Cloudflare"
++            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
++    </application>
++</manifest>
+diff --git a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
+new file mode 100644
+index 0000000..40909d3
+--- /dev/null
++++ b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
+@@ -0,0 +1,174 @@
++package eu.kanade.tachiyomi.network.interceptor
++
++import android.app.Activity
++import android.content.Context
++import android.content.Intent
++import android.graphics.Color
++import android.net.http.SslError
++import android.os.Bundle
++import android.view.Gravity
++import android.view.ViewGroup
++import android.webkit.RenderProcessGoneDetail
++import android.webkit.SslErrorHandler
++import android.webkit.WebView
++import android.webkit.WebViewClient
++import android.widget.LinearLayout
++import android.widget.TextView
++import androidx.core.content.ContextCompat
++import eu.kanade.tachiyomi.network.AndroidCookieJar
++import eu.kanade.tachiyomi.util.system.WebViewUtil
++import eu.kanade.tachiyomi.util.system.setDefaultSettings
++import eu.kanade.tachiyomi.util.system.setUserAgent
++import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
++import tachiyomi.core.common.util.system.logcat
++import java.util.concurrent.CountDownLatch
++import java.util.concurrent.TimeUnit
++import java.util.concurrent.atomic.AtomicBoolean
++
++/**
++ * A user-facing screen for solving a Cloudflare challenge the headless WebView in
++ * [CloudflareInterceptor] cannot pass on its own, like interactive Turnstile ones.
++ *
++ * The WebView is loaded with the triggering request's headers (most importantly its
++ * User-Agent), and its cookies land in the shared [AndroidCookieJar] storage, so the
++ * clearance earned here applies to the request that caused the challenge.
++ */
++class CloudflareChallengeActivity : Activity() {
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++
++        val challengeUrl = intent.getStringExtra(EXTRA_URL)!!
++        val parsedUrl = challengeUrl.toHttpUrlOrNull()!!
++        val headers = intent.getSerializableExtra(EXTRA_HEADERS) as? HashMap<String, String> ?: hashMapOf()
++        val ignoreSslErrors = intent.getBooleanExtra(EXTRA_IGNORE_SSL_ERRORS, false)
++
++        val cookieJar = AndroidCookieJar()
++        val originalClearance = cookieJar.get(parsedUrl).firstOrNull { it.name == "cf_clearance" }?.value
++
++        val padding = (resources.displayMetrics.density * 16).toInt()
++
++        val title = TextView(this).apply {
++            gravity = Gravity.CENTER
++            setPadding(padding, padding / 2, padding, 0)
++            setTextColor(Color.BLACK)
++            textSize = 16f
++            text = parsedUrl.host
++        }
++
++        val webView = WebView(this).apply {
++            setDefaultSettings()
++
++            if (!WebViewUtil.isFingerprintSpooferActive(this@CloudflareChallengeActivity)) {
++                // Avoid sending empty User-Agent, Chromium WebView will reset to default if empty
++                setUserAgent(headers["User-Agent"].takeUnless { it.isNullOrBlank() } ?: "Kahon")
++            }
++
++            webViewClient = object : WebViewClient() {
++                override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
++                    if (ignoreSslErrors) {
++                        handler.proceed()
++                    } else {
++                        super.onReceivedSslError(view, handler, error)
++                    }
++                }
++
++                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
++                    logcat { "WebView renderer gone during visible Cloudflare bypass: crashed=${detail.didCrash()}" }
++                    release(false)
++                    // Not handling it kills the app
++                    return true
++                }
++
++                override fun onPageFinished(view: WebView, url: String) {
++                    // The clearance might be granted on the loaded page itself or after a redirect
++                    val clearance = cookieJar.get(parsedUrl).firstOrNull { it.name == "cf_clearance" }?.value
++                    if (!clearance.isNullOrBlank() && clearance != originalClearance) {
++                        release(true)
++                        finish()
++                    }
++                }
++            }
++        }
++
++        val root = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setBackgroundColor(Color.WHITE)
++        }
++        root.addView(
++            title,
++            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
++        )
++        root.addView(
++            webView,
++            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f },
++        )
++        setContentView(
++            root,
++            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
++        )
++
++        webView.loadUrl(challengeUrl, headers)
++    }
++
++    override fun onDestroy() {
++        release(false)
++        super.onDestroy()
++    }
++
++    companion object {
++        private const val EXTRA_URL = "url"
++        private const val EXTRA_HEADERS = "headers"
++        private const val EXTRA_IGNORE_SSL_ERRORS = "ignoreSslErrors"
++        private const val SOLVE_TIMEOUT_MINUTES = 3L
++
++        private val lock = Any()
++        private var completionLatch: CountDownLatch? = null
++        private var solved = false
++        private val released = AtomicBoolean(false)
++
++        /**
++         * Opens the challenge screen for the person in front of the device, and blocks the
++         * caller until it is solved, dismissed or a timeout is reached. Returns whether the
++         * clearance cookie was acquired.
++         */
++        fun solve(context: Context, url: String, headers: Map<String, String>, ignoreSslErrors: Boolean): Boolean {
++            synchronized(lock) {
++                // A clearance from a failed challenge would only be rejected again
++                AndroidCookieJar().remove(url.toHttpUrlOrNull()!!, listOf(CLEARANCE_COOKIE_NAME), 0)
++                solved = false
++                released.set(false)
++
++                val intent = Intent(context, CloudflareChallengeActivity::class.java).apply {
++                    putExtra(EXTRA_URL, url)
++                    putExtra(EXTRA_HEADERS, HashMap(headers))
++                    putExtra(EXTRA_IGNORE_SSL_ERRORS, ignoreSslErrors)
++                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
++                }
++                ContextCompat.getMainExecutor(context).execute { context.startActivity(intent) }
++
++                val latch = CountDownLatch(1)
++                completionLatch = latch
++                val timedOut = !latch.await(SOLVE_TIMEOUT_MINUTES, TimeUnit.MINUTES)
++                completionLatch = null
++
++                logcat {
++                    "Visible Cloudflare bypass for $url finished: solved=$solved timedOut=$timedOut"
++                }
++                return solved
++            }
++        }
++
++        private fun release(isSolved: Boolean) {
++            synchronized(lock) {
++                if (!released.compareAndSet(false, true)) return
++                if (isSolved) {
++                    solved = true
++                }
++                completionLatch?.countDown()
++            }
++        }
++    }
++}
++
++private const val CLEARANCE_COOKIE_NAME = "cf_clearance"
+diff --git a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt
+index 312c926..1192250 100644
+--- a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt
++++ b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt
+@@ -273,6 +273,12 @@ class CloudflareInterceptor(
+         if (!cloudflareBypassed) {
+             // A clearance from a failed challenge would only be rejected again
+             cookieManager.remove(originalRequest.url, COOKIE_NAMES, 0)
++            // Fall back to a user-visible WebView: the headless one cannot complete interactive
++            // challenges, so hand them to the person in front of the screen instead of failing
++            if (CloudflareChallengeActivity.solve(context, origRequestUrl, headers, ignoreSslErrors)) {
++                return
++            }
++
+             // Prompt user to update WebView if it seems too outdated
+             if (isWebViewOutdated) {
+                 context.toast(MR.strings.information_webview_outdated, Toast.LENGTH_LONG)
