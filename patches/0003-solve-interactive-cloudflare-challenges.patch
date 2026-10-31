@@ -1,4 +1,4 @@
-From 80bf97362ab5f16078c96fc5b2ce01527088a2b6 Mon Sep 17 00:00:00 2001
+From cb19c672cd006cb1926aa1f216cb1a6c7899e99f Mon Sep 17 00:00:00 2001
 From: dm1sh <me@dmitriy.icu>
 Date: Sat, 31 Oct 2026 20:01:18 +0000
 Subject: [PATCH] Solve interactive Cloudflare challenges in a user-visible
@@ -57,7 +57,7 @@ index 0e0f201..8bc31b0 100644
              .count()
 diff --git a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
 new file mode 100644
-index 0000000..4668797
+index 0000000..066bb71
 --- /dev/null
 +++ b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
 @@ -0,0 +1,210 @@
@@ -102,7 +102,7 @@ index 0000000..4668797
 + */
 +class CloudflareChallengeActivity : Activity() {
 +
-+    private val id: Long by lazy { intent.getLongExtra(EXTRA_ID, -1L) }
++    private val challengeId: Long by lazy { intent.getLongExtra(EXTRA_ID, -1L) }
 +
 +    override fun onCreate(savedInstanceState: Bundle?) {
 +        super.onCreate(savedInstanceState)
@@ -147,14 +147,14 @@ index 0000000..4668797
 +                    // leave the screen stuck until the solve timeout.
 +                    if (request.isForMainFrame) {
 +                        logcat { "Visible Cloudflare bypass for $parsedUrl failed to load: ${error.description}" }
-+                        release(id, false)
++                        release(challengeId, false)
 +                        finish()
 +                    }
 +                }
 +
 +                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
 +                    logcat { "WebView renderer gone during visible Cloudflare bypass: crashed=${detail.didCrash()}" }
-+                    release(id, false)
++                    release(challengeId, false)
 +                    // Not handling it kills the app
 +                    return true
 +                }
@@ -163,7 +163,7 @@ index 0000000..4668797
 +                    // The clearance might be granted on the loaded page itself or after a redirect
 +                    val clearance = cookieJar.get(parsedUrl).firstOrNull { it.name == CLEARANCE_COOKIE_NAME }?.value
 +                    if (!clearance.isNullOrBlank() && clearance != originalClearance) {
-+                        release(id, true)
++                        release(challengeId, true)
 +                        finish()
 +                    }
 +                }
@@ -191,7 +191,7 @@ index 0000000..4668797
 +    }
 +
 +    override fun onDestroy() {
-+        release(id, false)
++        release(challengeId, false)
 +        super.onDestroy()
 +    }
 +
