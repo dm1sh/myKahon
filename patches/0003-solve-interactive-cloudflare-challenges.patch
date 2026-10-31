@@ -1,4 +1,4 @@
-From 11fedaafc2288bf14075e6a7619d81b32538c6fd Mon Sep 17 00:00:00 2001
+From 80bf97362ab5f16078c96fc5b2ce01527088a2b6 Mon Sep 17 00:00:00 2001
 From: dm1sh <me@dmitriy.icu>
 Date: Sat, 31 Oct 2026 20:01:18 +0000
 Subject: [PATCH] Solve interactive Cloudflare challenges in a user-visible
@@ -17,9 +17,10 @@ here applies to the request that caused the challenge (including the
 tracker API calls to domains like shikimori.rip).
 ---
  core/common/src/main/AndroidManifest.xml      |  12 +-
- .../CloudflareChallengeActivity.kt            | 173 ++++++++++++++++++
+ .../tachiyomi/network/AndroidCookieJar.kt     |   3 +-
+ .../CloudflareChallengeActivity.kt            | 210 ++++++++++++++++++
  .../interceptor/CloudflareInterceptor.kt      |  16 ++
- 3 files changed, 200 insertions(+), 1 deletion(-)
+ 4 files changed, 239 insertions(+), 2 deletions(-)
  create mode 100644 core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
 
 diff --git a/core/common/src/main/AndroidManifest.xml b/core/common/src/main/AndroidManifest.xml
@@ -40,12 +41,26 @@ index 8072ee0..027919d 100644
 +            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 +    </application>
 +</manifest>
+diff --git a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt
+index 0e0f201..8bc31b0 100644
+--- a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt
++++ b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt
+@@ -42,7 +42,8 @@ class AndroidCookieJar : CookieJar {
+         }
+ 
+         return cookies.split(";")
+-            .map { it.substringBefore("=") }
++            // getCookie joins cookies with "; " with a leading space on all but the first one
++            .map { it.trim().substringBefore("=") }
+             .filterNames()
+             .onEach { manager.setCookie(urlString, "$it=;Max-Age=$maxAge") }
+             .count()
 diff --git a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
 new file mode 100644
-index 0000000..082b537
+index 0000000..4668797
 --- /dev/null
 +++ b/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareChallengeActivity.kt
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,210 @@
 +package eu.kanade.tachiyomi.network.interceptor
 +
 +import android.app.Activity
@@ -58,6 +73,8 @@ index 0000000..082b537
 +import android.view.ViewGroup
 +import android.webkit.RenderProcessGoneDetail
 +import android.webkit.SslErrorHandler
++import android.webkit.WebResourceError
++import android.webkit.WebResourceRequest
 +import android.webkit.WebView
 +import android.webkit.WebViewClient
 +import android.widget.LinearLayout
@@ -69,9 +86,11 @@ index 0000000..082b537
 +import eu.kanade.tachiyomi.util.system.setUserAgent
 +import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 +import tachiyomi.core.common.util.system.logcat
++import java.util.concurrent.ConcurrentHashMap
 +import java.util.concurrent.CountDownLatch
 +import java.util.concurrent.TimeUnit
 +import java.util.concurrent.atomic.AtomicBoolean
++import java.util.concurrent.atomic.AtomicLong
 +
 +/**
 + * A user-facing screen for solving a Cloudflare challenge the headless WebView in
@@ -82,6 +101,8 @@ index 0000000..082b537
 + * clearance earned here applies to the request that caused the challenge.
 + */
 +class CloudflareChallengeActivity : Activity() {
++
++    private val id: Long by lazy { intent.getLongExtra(EXTRA_ID, -1L) }
 +
 +    override fun onCreate(savedInstanceState: Bundle?) {
 +        super.onCreate(savedInstanceState)
@@ -121,9 +142,19 @@ index 0000000..082b537
 +                    }
 +                }
 +
++                override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
++                    // Subresource failures are expected, but a main frame that can't be loaded would only
++                    // leave the screen stuck until the solve timeout.
++                    if (request.isForMainFrame) {
++                        logcat { "Visible Cloudflare bypass for $parsedUrl failed to load: ${error.description}" }
++                        release(id, false)
++                        finish()
++                    }
++                }
++
 +                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
 +                    logcat { "WebView renderer gone during visible Cloudflare bypass: crashed=${detail.didCrash()}" }
-+                    release(false)
++                    release(id, false)
 +                    // Not handling it kills the app
 +                    return true
 +                }
@@ -132,7 +163,7 @@ index 0000000..082b537
 +                    // The clearance might be granted on the loaded page itself or after a redirect
 +                    val clearance = cookieJar.get(parsedUrl).firstOrNull { it.name == CLEARANCE_COOKIE_NAME }?.value
 +                    if (!clearance.isNullOrBlank() && clearance != originalClearance) {
-+                        release(true)
++                        release(id, true)
 +                        finish()
 +                    }
 +                }
@@ -160,62 +191,83 @@ index 0000000..082b537
 +    }
 +
 +    override fun onDestroy() {
-+        release(false)
++        release(id, false)
 +        super.onDestroy()
++    }
++
++    private class Waiter {
++        val latch = CountDownLatch(1)
++        val released = AtomicBoolean(false)
++
++        @Volatile
++        var solved = false
 +    }
 +
 +    companion object {
 +        private const val EXTRA_URL = "url"
 +        private const val EXTRA_HEADERS = "headers"
 +        private const val EXTRA_IGNORE_SSL_ERRORS = "ignoreSslErrors"
++        private const val EXTRA_ID = "id"
 +        private const val CLEARANCE_COOKIE_NAME = "cf_clearance"
 +        private const val SOLVE_TIMEOUT_MINUTES = 3L
 +
-+        private val lock = Any()
-+        private var completionLatch: CountDownLatch? = null
-+        private var solved = false
-+        private val released = AtomicBoolean(false)
++        private val nextId = AtomicLong()
++        private val waiters = ConcurrentHashMap<Long, Waiter>()
 +
 +        /**
 +         * Opens the challenge screen for the person in front of the device, and blocks the
 +         * caller until it is solved, dismissed or a timeout is reached. Returns whether the
 +         * clearance cookie was acquired.
++         *
++         * The caller is an OkHttp thread, but the screen's callbacks run on the main thread, so
++         * no lock may be held while waiting here: [release] must never block the UI thread.
 +         */
 +        fun solve(context: Context, url: String, headers: Map<String, String>, ignoreSslErrors: Boolean): Boolean {
-+            synchronized(lock) {
-+                // A clearance from a failed challenge would only be rejected again
-+                AndroidCookieJar().remove(url.toHttpUrlOrNull()!!, listOf(CLEARANCE_COOKIE_NAME), 0)
-+                solved = false
-+                released.set(false)
++            val parsedUrl = url.toHttpUrlOrNull() ?: return false
 +
-+                val intent = Intent(context, CloudflareChallengeActivity::class.java).apply {
-+                    putExtra(EXTRA_URL, url)
-+                    putExtra(EXTRA_HEADERS, HashMap(headers))
-+                    putExtra(EXTRA_IGNORE_SSL_ERRORS, ignoreSslErrors)
-+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-+                }
-+                ContextCompat.getMainExecutor(context).execute { context.startActivity(intent) }
++            val id = nextId.incrementAndGet()
++            val waiter = Waiter()
++            waiters[id] = waiter
 +
-+                val latch = CountDownLatch(1)
-+                completionLatch = latch
-+                val timedOut = !latch.await(SOLVE_TIMEOUT_MINUTES, TimeUnit.MINUTES)
-+                completionLatch = null
++            // A clearance from a failed challenge would only be rejected again
++            AndroidCookieJar().remove(parsedUrl, listOf(CLEARANCE_COOKIE_NAME), 0)
 +
-+                logcat {
-+                    "Visible Cloudflare bypass for $url finished: solved=$solved timedOut=$timedOut"
-+                }
-+                return solved
++            val intent = Intent(context, CloudflareChallengeActivity::class.java).apply {
++                putExtra(EXTRA_URL, url)
++                putExtra(EXTRA_HEADERS, HashMap(headers))
++                putExtra(EXTRA_IGNORE_SSL_ERRORS, ignoreSslErrors)
++                putExtra(EXTRA_ID, id)
++                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 +            }
++            ContextCompat.getMainExecutor(context).execute {
++                try {
++                    context.startActivity(intent)
++                } catch (e: Exception) {
++                    logcat { "Failed to open the visible Cloudflare bypass for $url" }
++                    release(id, false)
++                }
++            }
++
++            val timedOut = try {
++                !waiter.latch.await(SOLVE_TIMEOUT_MINUTES, TimeUnit.MINUTES)
++            } catch (e: InterruptedException) {
++                Thread.currentThread().interrupt()
++                true
++            } finally {
++                waiters.remove(id)
++            }
++
++            logcat {
++                "Visible Cloudflare bypass for $url finished: solved=${waiter.solved} timedOut=$timedOut"
++            }
++            return waiter.solved
 +        }
 +
-+        private fun release(isSolved: Boolean) {
-+            synchronized(lock) {
-+                if (!released.compareAndSet(false, true)) return
-+                if (isSolved) {
-+                    solved = true
-+                }
-+                completionLatch?.countDown()
-+            }
++        private fun release(id: Long, isSolved: Boolean) {
++            val waiter = waiters[id] ?: return
++            if (!waiter.released.compareAndSet(false, true)) return
++            if (isSolved) waiter.solved = true
++            waiter.latch.countDown()
 +        }
 +    }
 +}
@@ -246,3 +298,6 @@ index be44e6e..d65d0a1 100644
              throw IOException(context.stringResource(MR.strings.information_cloudflare_bypass_failure), e)
          } catch (e: Exception) {
              throw IOException(e)
+-- 
+2.52.0
+
