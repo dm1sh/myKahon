@@ -83,9 +83,30 @@ jobs:
 
       - name: Clone upstream release tag
         if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git clone --depth 1 --branch "${{ steps.upstream.outputs.tag }}" \
+          # Resolve the tag to its commit via the API, then make sure the clone is
+          # exactly that commit: if the tag moves between scheduling and cloning,
+          # the build would silently compile a tree the patches were not made for
+          # (upstream has re-pointed its tags before, producing this exact failure).
+          tag="${{ steps.upstream.outputs.tag }}"
+          ref="$(gh api "repos/${UPSTREAM_REPO}/git/ref/tags/${tag}")"
+          tag_commit="$(jq --raw-output '.object.sha' <<<"${ref}")"
+          if [ "$(jq --raw-output '.object.type' <<<"${ref}")" = "tag" ]; then
+            # Annotated tag: dereference to the commit it points at
+            tag_commit="$(gh api "repos/${UPSTREAM_REPO}/git/tags/${tag_commit}" --jq '.object.sha')"
+          fi
+          echo "Upstream tag ${tag} resolves to commit ${tag_commit}"
+
+          git clone --depth 1 --branch "${tag}" \
             "https://github.com/${UPSTREAM_REPO}.git" upstream
+          actual="$(git -C upstream rev-parse HEAD)"
+          if [ "${actual}" != "${tag_commit}" ]; then
+            echo "Clone checked out ${actual}, tag has moved; checking out the resolved commit."
+            git -C upstream fetch --depth 1 origin "${tag_commit}"
+            git -C upstream checkout --detach "${tag_commit}"
+          fi
           git -C upstream submodule update --init --recursive
 
       - name: Apply patches
